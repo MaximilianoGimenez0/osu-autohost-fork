@@ -1,0 +1,102 @@
+using BanchoMultiplayerBot.Constants;
+using BanchoMultiplayerBot.Data;
+using BanchoMultiplayerBot.Database;
+using BanchoMultiplayerBot.Database.Models;
+using BanchoMultiplayerBot.Interfaces;
+using Microsoft.EntityFrameworkCore;
+using Serilog;
+
+namespace BanchoMultiplayerBot.Providers;
+
+public class VoteProvider(ILobby lobby) : IVoteProvider
+{
+    private readonly ILobby _lobby = lobby;
+    private readonly List<IVote> _votes = [];
+
+    public IVote FindOrCreateVote(string name, string description)
+    {
+        var vote = _votes.FirstOrDefault(x => x.Name == name);
+
+        if (vote == null)
+        {
+            vote = new Vote(name, description, _lobby);
+            _votes.Add(vote);
+        }
+
+        return vote;
+    }
+
+    public async Task Start()
+    {
+        await LoadVotes();
+    }
+
+    public async Task Stop()
+    {
+        await SaveVotes();
+    }
+    
+    private async Task LoadVotes()
+    {
+        await using var context = new BotDbContext();
+
+        var votes = await context.LobbyVotes
+            .Where(x => x.LobbyId == _lobby.LobbyConfigurationId)
+            .ToListAsync();
+
+        foreach (var vote in votes)
+        {
+            var newVote = new Vote(vote.Name, vote.Description, _lobby)
+            {
+                IsActive = vote.IsActive,
+                Votes = vote.Votes,
+                StartTime = vote.StartTime,
+                PassTime = vote.PassTime
+            };
+            
+            if ((DateTime.UtcNow - newVote.StartTime).TotalSeconds > 120 && newVote.IsActive)
+            {
+                newVote.IsActive = false;
+                Log.Warning(BotMessages.Logs.Dispatcher.VoteExpiredAborted, newVote.Name, _lobby.LobbyConfigurationId);
+            }
+            
+            _votes.Add(newVote);
+        }
+        
+        Log.Verbose(BotMessages.Logs.Dispatcher.VotesLoaded, _votes.Count, _lobby.LobbyConfigurationId);
+    }
+    
+    private async Task SaveVotes()
+    {
+        await using var context = new BotDbContext();
+
+        foreach (var vote in _votes)
+        {
+            var existingVote = await context.LobbyVotes.FirstOrDefaultAsync(x => x.LobbyId == _lobby.LobbyConfigurationId && x.Name == vote.Name);
+
+            if (existingVote == null)
+            {
+                existingVote = new LobbyVote
+                {
+                    LobbyId = _lobby.LobbyConfigurationId,
+                    Name = vote.Name,
+                    Description = vote.Description,
+                    IsActive = vote.IsActive,
+                    Votes = vote.Votes,
+                    StartTime = vote.StartTime,
+                    PassTime = vote.PassTime
+                };
+                
+                context.LobbyVotes.Add(existingVote);
+            }
+
+            existingVote.Description = vote.Description;
+            existingVote.IsActive = vote.IsActive;
+            existingVote.Votes = vote.Votes;
+            existingVote.StartTime = vote.StartTime;
+            existingVote.PassTime = vote.PassTime;
+        }
+        
+        await context.SaveChangesAsync();
+    }
+}

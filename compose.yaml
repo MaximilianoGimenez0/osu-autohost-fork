@@ -1,0 +1,46 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: osu-autohost
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: "024215"
+      POSTGRES_DB: osu
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - osu-autohost:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d osu"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: osu-autohost-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:5215
+      ConnectionStrings__Bot: "Host=osu-autohost;Port=5432;Database=osu;Username=admin;Password=024215"
+    ports:
+      - "5215:5215"
+    volumes:
+      - ./BanchoMultiplayerBot.Host.WebApi/appsettings.json:/app/appsettings.json:ro
+      - osu-autohost-cache:/app/cache
+
+volumes:
+  osu-autohost:
+    name: osu-autohost
+  osu-autohost-cache:
+    name: osu-autohost-cache
+

@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <DefineConstants>$(DefineConstants);INTERNAL_BOT_MESSAGES</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\BanchoMultiplayerBot\Constants\BotMessages.cs" Link="Constants\BotMessages.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="prometheus-net" Version="8.2.1" />
+    <PackageReference Include="Serilog" Version="4.2.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="BanchoSharp">
+      <HintPath>..\lib\BanchoSharp.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+</Project>

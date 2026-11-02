@@ -1,0 +1,97 @@
+using System.Text;
+using BanchoMultiplayerBot.Constants;
+using BanchoMultiplayerBot.Data;
+using BanchoMultiplayerBot.Extensions;
+using BanchoMultiplayerBot.Interfaces;
+using osu.NET.Enums;
+using Serilog;
+
+namespace BanchoMultiplayerBot.Commands;
+
+public class RecentScoreCommand : IPlayerCommand
+{
+    public string Command => "RecentScore";
+
+    public List<string>? Aliases => ["rs"];
+
+    public bool AllowGlobal => true;
+
+    public bool Administrator => false;
+
+    public int MinimumArguments => 0;
+
+    public string? Usage => null;
+
+    public async Task ExecuteAsync(CommandEventContext context)
+    {
+        int? playerId = context.Player?.Id;
+
+        if (playerId == null)
+        {
+            var userResult = await context.UsingApiClient(async (apiClient) => await apiClient.GetUserAsync(context.Message.Sender));
+            
+            if (userResult.IsFailure)
+            {
+                Log.Error(BotMessages.Logs.Osu.RecentScoreUserLookupFailed, context.Message.Sender, userResult.Error);
+                context.Reply(BotMessages.Chat.Commands.RecentScoreUserNotFound);
+                return;
+            }
+
+            playerId = userResult!.Value!.Id;
+        }
+
+        var scoresResult = (await context.UsingApiClient(async (apiClient) => await apiClient.GetUserScoresAsync(playerId.Value, UserScoreType.Recent, true, true, Ruleset.Osu, 1)));
+
+        if (scoresResult.IsFailure)
+        {
+            context.Reply(BotMessages.Chat.Commands.RecentScoreNotFound);
+            return;
+        }
+
+        var score = scoresResult.Value!.First();
+        
+        var beatmapInformationResult = await context.UsingApiClient(async (apiClient) => await apiClient.GetBeatmapAsync(score.BeatmapId));
+        if (beatmapInformationResult.IsFailure)
+        {
+            Log.Error(BotMessages.Logs.Osu.RecentScoreBeatmapLookupFailed, score.BeatmapId, context.Message.Sender, beatmapInformationResult.Error);
+            context.Reply(BotMessages.Chat.Commands.RecentScoreBeatmapNotFound);
+            return;
+        }
+        
+        var beatmapInformation = beatmapInformationResult.Value!;
+        
+        var ppInformation = await context.Bot.PerformancePointService!.CalculateScorePerformancePoints(score.BeatmapId, score, beatmapInformation.LastUpdated);
+        if (ppInformation == null)
+        {
+            context.Reply(BotMessages.Chat.Commands.RecentScorePpFailed);
+            return;
+        }
+        
+        var response = new StringBuilder();
+
+        response.Append($"Recent score for {context.Message.Sender}: ");
+
+        response.Append(
+            $"[https://osu.ppy.sh/b/{beatmapInformation.SetId} {beatmapInformation.Set?.Artist} - {beatmapInformation.Set?.Title} [{beatmapInformation.Version}]]");
+
+        if (score.Mods.Length != 0)
+        {
+            response.Append($" + {string.Join("", score.Mods.Where(m => m.Acronym != "CL").Select(m => m.Acronym.ToString()))}");
+        }
+
+        response.Append($" | [{score.Grade.AsHumanString()}]");
+                
+        response.Append($" | {(int)ppInformation.PerformancePoints} pp ");
+                
+        if (!score.IsPerfectComboLegacy && (int)ppInformation.MaximumPerformancePoints != (int)ppInformation.PerformancePoints)
+        {
+            response.Append($"({(int)ppInformation.MaximumPerformancePoints} pp if FC) ");
+        }
+
+        response.Append($"| {(score.Accuracy * 100f):0.00}% | ");
+
+        response.Append($"x{score.MaxCombo}/{beatmapInformation.MaxCombo} | {score.Statistics.Great}/{score.Statistics.Ok}/{score.Statistics.Meh}/{score.Statistics.Miss}");
+        
+        context.Reply(response.ToString());
+    }
+}

@@ -1,0 +1,26 @@
+.vs/
+bin/
+obj/
+/packages/
+riderModule.iml
+/_ReSharper.Caches/
+.idea/
+config.json
+appsettings.json
+*.db
+*.svg
+log*.txt
+BanchoMultiplayerBot.Host.Console/Program.cs
+BanchoMultiplayerBot.Host.WebApi/cache
+
+# Allow committed third-party assemblies in lib/
+!lib/
+!lib/*.dll
+!lib/*.xml
+!lib/*.pdb
+
+# Allow banner SVG templates
+!banner/*.svg
+!**/banner/*.svg
+
+
